@@ -36,7 +36,7 @@ func NewApprovalRepository(pool *pgxpool.Pool) *ApprovalRepository {
 func (r *ApprovalRepository) ListPending(ctx context.Context) ([]models.PendingCustomOrder, error) {
 	const query = `
 		SELECT
-			o.id, o.user_id, o.status, o.total_amount, o.created_at,
+			o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.created_at,
 			u.full_name, u.email, u.phone,
 			oi.quantity, oi.unit_price,
 			c.id, c.user_id, c.category, c.gender, c.metal_type, c.gemstone_type,
@@ -59,7 +59,7 @@ func (r *ApprovalRepository) ListPending(ctx context.Context) ([]models.PendingC
 	for rows.Next() {
 		var p models.PendingCustomOrder
 		if err := rows.Scan(
-			&p.OrderID, &p.UserID, &p.Status, &p.TotalAmount, &p.CreatedAt,
+			&p.OrderID, &p.UserID, &p.Status, &p.TotalAmount, &p.ShippingAddress, &p.CreatedAt,
 			&p.CustomerName, &p.CustomerEmail, &p.CustomerPhone,
 			&p.Quantity, &p.UnitPrice,
 			&p.Customization.ID, &p.Customization.UserID, &p.Customization.Category,
