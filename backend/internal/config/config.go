@@ -23,6 +23,8 @@ type Config struct {
 	// Required, like DatabaseURL — an insecure baked-in default here would
 	// mean every deployment that forgets to set it shares the same key.
 	JWTSecret []byte
+	// JWTTokenTTL controls how long a signup/login-issued token is valid.
+	JWTTokenTTL time.Duration
 
 	// AllowedOrigins configures CORS for the Next.js frontend.
 	AllowedOrigins []string
@@ -53,6 +55,7 @@ func Load() (*Config, error) {
 		DBConnectTimeout:  getEnvDuration("DB_CONNECT_TIMEOUT", 5*time.Second),
 		DBMaxConnLifetime: getEnvDuration("DB_MAX_CONN_LIFETIME", time.Hour),
 		JWTSecret:         []byte(jwtSecret),
+		JWTTokenTTL:       getEnvDuration("JWT_TOKEN_TTL", 24*time.Hour),
 		AllowedOrigins:    []string{getEnv("FRONTEND_ORIGIN", "http://localhost:3000")},
 	}
 

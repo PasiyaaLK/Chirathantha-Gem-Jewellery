@@ -48,6 +48,7 @@ func run() error {
 	productRepo := repository.NewProductRepository(pool)
 	orderRepo := repository.NewOrderRepository(pool)
 	approvalRepo := repository.NewApprovalRepository(pool)
+	userRepo := repository.NewUserRepository(pool)
 
 	// LogNotifier writes to structured logs instead of a real provider —
 	// swap this one line for an SMTP/Twilio-backed implementation once
@@ -56,14 +57,21 @@ func run() error {
 	notifierSvc := notifier.NewLogNotifier()
 
 	productSvc := service.NewProductService(productRepo)
-	orderSvc := service.NewOrderService(orderRepo)
+	pricingSvc := service.NewPricingService()
+	orderSvc := service.NewOrderService(orderRepo, pricingSvc)
 	approvalSvc := service.NewApprovalService(approvalRepo, notifierSvc)
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTTokenTTL)
 
 	productHandler := handler.NewProductHandler(productSvc)
 	orderHandler := handler.NewOrderHandler(orderSvc)
 	adminHandler := handler.NewAdminHandler(approvalSvc)
+	authHandler := handler.NewAuthHandler(authSvc)
+	pricingHandler := handler.NewPricingHandler(pricingSvc)
 
-	router := handler.NewRouter(pool, productHandler, orderHandler, adminHandler, cfg.JWTSecret, cfg.AllowedOrigins)
+	router := handler.NewRouter(
+		pool, productHandler, orderHandler, adminHandler, authHandler, pricingHandler,
+		cfg.JWTSecret, cfg.AllowedOrigins,
+	)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

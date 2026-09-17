@@ -28,6 +28,8 @@ func NewRouter(
 	productHandler *ProductHandler,
 	orderHandler *OrderHandler,
 	adminHandler *AdminHandler,
+	authHandler *AuthHandler,
+	pricingHandler *PricingHandler,
 	jwtSecret []byte,
 	allowedOrigins []string,
 ) http.Handler {
@@ -52,10 +54,22 @@ func NewRouter(
 	requireAdmin := appmiddleware.RequireRole(models.RoleAdmin)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// --- Public: catalogue browsing needs no login --------------------
+		// --- Public: no login required --------------------------------------
 		r.Route("/products", func(r chi.Router) {
 			r.Get("/", productHandler.List)
 			r.Get("/{id}", productHandler.Get)
+		})
+
+		r.Get("/pricing/catalog", pricingHandler.Catalog)
+
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/signup", authHandler.SignUp)
+			r.Post("/login", authHandler.Login)
+
+			r.Group(func(r chi.Router) {
+				r.Use(authenticate)
+				r.Get("/me", authHandler.Me)
+			})
 		})
 
 		// --- Authenticated customer routes ---------------------------------

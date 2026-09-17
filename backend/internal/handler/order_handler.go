@@ -43,14 +43,16 @@ func (h *OrderHandler) SubmitCustom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	order, err := h.svc.SubmitCustomOrder(r.Context(), userID, req)
+	result, err := h.svc.SubmitCustomOrder(r.Context(), userID, req)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
 	}
 
-	w.Header().Set("Location", "/api/v1/orders/"+order.ID.String())
-	httputil.WriteJSON(w, http.StatusCreated, order)
+	// Response is {"order": {...}, "pricing": {...}} as of the pricing
+	// engine — see models.CustomOrderResult — not just the bare order.
+	w.Header().Set("Location", "/api/v1/orders/"+result.Order.ID.String())
+	httputil.WriteJSON(w, http.StatusCreated, result)
 }
 
 // Get handles GET /api/v1/orders/{id}. Now that Authenticate runs on

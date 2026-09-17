@@ -206,6 +206,64 @@ type DecisionRequest struct {
 	Notes *string `json:"notes,omitempty"`
 }
 
+// SignUpRequest is the payload for POST /api/v1/auth/signup. Note there
+// is no role field — public signup always creates a 'customer' account;
+// see cmd/seedadmin for creating the store owner's admin account.
+type SignUpRequest struct {
+	Email    string  `json:"email"`
+	Password string  `json:"password"`
+	FullName string  `json:"full_name"`
+	Phone    *string `json:"phone,omitempty"`
+}
+
+// LoginRequest is the payload for POST /api/v1/auth/login.
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// AuthResponse is returned by both signup and login: a bearer token plus
+// the profile of the account it belongs to.
+type AuthResponse struct {
+	Token string `json:"token"`
+	User  User   `json:"user"`
+}
+
+// --- Pricing ---------------------------------------------------------------
+
+// PricingBreakdown documents how a custom order's price was computed,
+// returned alongside the order so the frontend can show its own
+// estimate was (or wasn't) correct, rather than just a final number.
+// See internal/service/pricing.go for the calculation itself.
+type PricingBreakdown struct {
+	CategoryBase    float64 `json:"category_base"`
+	MetalMultiplier float64 `json:"metal_multiplier"`
+	AfterMetal      float64 `json:"after_metal"`
+	GemstoneFee     float64 `json:"gemstone_fee"`
+	EngravingFee    float64 `json:"engraving_fee"`
+	Total           float64 `json:"total"`
+}
+
+// PricingCatalog is the raw lookup data behind PricingBreakdown, exposed
+// via GET /api/v1/pricing/catalog so a frontend can compute its own
+// live estimate against the exact same numbers instead of a hand-copied
+// (and driftable) second source of truth.
+type PricingCatalog struct {
+	CategoryBasePrices  map[string]float64 `json:"category_base_prices"`
+	MetalMultipliers    map[string]float64 `json:"metal_multipliers"`
+	GemstoneFees        map[string]float64 `json:"gemstone_fees"`
+	EngravingBaseFee    float64            `json:"engraving_base_fee"`
+	EngravingPerCharFee float64            `json:"engraving_per_char_fee"`
+}
+
+// CustomOrderResult is the response for POST /api/v1/orders/custom: the
+// created order plus the price breakdown the server actually charged,
+// so the client can reconcile it against its own local estimate.
+type CustomOrderResult struct {
+	Order   Order            `json:"order"`
+	Pricing PricingBreakdown `json:"pricing"`
+}
+
 // CustomOrderRequest is the payload for POST /api/v1/orders/custom.
 // It bundles the customization spec with the quantity/shipping info needed
 // to create the order + order_item in one transaction.
