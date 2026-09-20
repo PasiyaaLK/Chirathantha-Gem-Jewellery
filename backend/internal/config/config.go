@@ -28,6 +28,19 @@ type Config struct {
 
 	// AllowedOrigins configures CORS for the Next.js frontend.
 	AllowedOrigins []string
+
+	// --- Notification providers (all optional) ---------------------------
+	// Any of these left unset means that channel falls back to
+	// LogNotifier — see buildNotifier in cmd/api/main.go. Unlike
+	// DatabaseURL/JWTSecret, the app is fully usable without these; it
+	// just won't actually deliver email/SMS.
+	SendGridAPIKey   string
+	EmailFromAddress string
+	EmailFromName    string
+
+	TwilioAccountSID string
+	TwilioAuthToken  string
+	TwilioFromNumber string
 }
 
 // Load reads configuration from the environment, applying sane defaults
@@ -57,6 +70,14 @@ func Load() (*Config, error) {
 		JWTSecret:         []byte(jwtSecret),
 		JWTTokenTTL:       getEnvDuration("JWT_TOKEN_TTL", 24*time.Hour),
 		AllowedOrigins:    []string{getEnv("FRONTEND_ORIGIN", "http://localhost:3000")},
+
+		SendGridAPIKey:   os.Getenv("SENDGRID_API_KEY"),
+		EmailFromAddress: getEnv("EMAIL_FROM_ADDRESS", "orders@example.com"),
+		EmailFromName:    getEnv("EMAIL_FROM_NAME", "Gem & Jewelry Store"),
+
+		TwilioAccountSID: os.Getenv("TWILIO_ACCOUNT_SID"),
+		TwilioAuthToken:  os.Getenv("TWILIO_AUTH_TOKEN"),
+		TwilioFromNumber: os.Getenv("TWILIO_PHONE_NUMBER"),
 	}
 
 	return cfg, nil
