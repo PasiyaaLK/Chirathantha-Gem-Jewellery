@@ -51,10 +51,11 @@ func run() error {
 	userRepo := repository.NewUserRepository(pool)
 
 	// LogNotifier writes to structured logs instead of a real provider —
-	// swap this one line for an SMTP/Twilio-backed implementation once
-	// credentials exist; nothing else in the wiring changes, since every
-	// consumer only knows the notifier.NotificationService interface.
-	notifierSvc := notifier.NewLogNotifier()
+	// buildNotifier below swaps in SendGrid/Twilio automatically once
+	// their credentials are configured; nothing else in the wiring
+	// changes either way, since every consumer only knows the
+	// notifier.NotificationService interface.
+	notifierSvc := buildNotifier(cfg)
 
 	productSvc := service.NewProductService(productRepo)
 	pricingSvc := service.NewPricingService()
@@ -112,4 +113,38 @@ func run() error {
 
 	slog.Info("server shut down cleanly")
 	return nil
+}
+
+// buildNotifier picks a real provider for each channel (email, SMS)
+// independently when its credentials are configured, and falls back to
+// LogNotifier for whichever channel isn't — so the app degrades
+// gracefully (logs instead of sending) rather than failing to start
+// just because, say, Twilio isn't set up yet in a given environment.
+//
+// *LogNotifier satisfies both the email-only and SMS-only interfaces
+// CompositeNotifier wants, since it implements both methods — no
+// adapter needed to use it for either side.
+func buildNotifier(cfg *config.Config) notifier.NotificationService {
+	logNotifier := notifier.NewLogNotifier()
+	composite := &notifier.CompositeNotifier{Email: logNotifier, SMS: logNotifier}
+
+	if cfg.SendGridAPIKey != "" {
+		composite.Email = notifier.NewSendGridEmailNotifier(
+			cfg.SendGridAPIKey, cfg.EmailFromAddress, cfg.EmailFromName,
+		)
+		slog.Info("notifier: sending email via SendGrid", "from", cfg.EmailFromAddress)
+	} else {
+		slog.Warn("notifier: SENDGRID_API_KEY not set — emails will be logged, not sent")
+	}
+
+	if cfg.TwilioAccountSID != "" && cfg.TwilioAuthToken != "" && cfg.TwilioFromNumber != "" {
+		composite.SMS = notifier.NewTwilioSMSNotifier(
+			cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioFromNumber,
+		)
+		slog.Info("notifier: sending SMS via Twilio", "from", cfg.TwilioFromNumber)
+	} else {
+		slog.Warn("notifier: Twilio credentials not fully set — SMS will be logged, not sent")
+	}
+
+	return composite
 }
