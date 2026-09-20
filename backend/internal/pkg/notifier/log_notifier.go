@@ -7,23 +7,24 @@ import (
 
 // LogNotifier is a NotificationService that writes to structured logs
 // instead of calling a real provider. It's the default wiring for local
-// development and for exercising the approval workflow end-to-end before
-// provider credentials exist.
+// development and for exercising the approval workflow end-to-end
+// before provider credentials exist — and the automatic fallback in
+// cmd/api/main.go's buildNotifier for whichever of email/SMS doesn't
+// have credentials configured, so the app degrades gracefully instead
+// of failing to start.
 //
-// To go live: implement NotificationService against a real provider —
-// SMTP/Resend/SendGrid for SendEmail, Twilio/SNS for SendSMS (both
-// suggested in the proposal's tech stack) — and swap the constructor
-// call in cmd/api/main.go. Nothing in the service or handler layers
-// needs to change; they only know about the interface.
+// Real providers: SendGridEmailNotifier and TwilioSMSNotifier (see
+// providers.go), wired automatically once SENDGRID_API_KEY /
+// TWILIO_ACCOUNT_SID etc. are set — see buildNotifier in cmd/api/main.go.
 type LogNotifier struct{}
 
 func NewLogNotifier() *LogNotifier {
 	return &LogNotifier{}
 }
 
-func (n *LogNotifier) SendEmail(ctx context.Context, to, subject, body string) error {
+func (n *LogNotifier) SendEmail(ctx context.Context, to, subject, htmlBody, textBody string) error {
 	slog.InfoContext(ctx, "notifier: email (logged, not sent)",
-		"to", to, "subject", subject, "body_preview", preview(body))
+		"to", to, "subject", subject, "text_preview", preview(textBody), "html_len", len(htmlBody))
 	return nil
 }
 
