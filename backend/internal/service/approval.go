@@ -90,8 +90,7 @@ func (s *ApprovalService) decide(
 // provider failure, surviving a server restart mid-send) would replace
 // this with a durable outbox: write a notification_outbox row in the
 // same DB transaction as the status update, and have a separate worker
-// poll and send it — a natural Step 3/4 once a real provider is wired
-// in.
+// poll and send it.
 func (s *ApprovalService) dispatchNotification(
 	contact models.CustomerContact,
 	order models.Order,
@@ -109,15 +108,37 @@ func (s *ApprovalService) dispatchNotification(
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		subject, body := notifier.BuildOrderDecisionMessage(order, decision, notes)
+		var (
+			content notifier.EmailContent
+			err     error
+		)
+		if decision == models.DecisionConfirmed {
+			content, err = notifier.RenderApprovalEmail(contact, order, notes)
+		} else {
+			reason := ""
+			if notes != nil {
+				reason = *notes
+			}
+			content, err = notifier.RenderDeclineEmail(contact, order, reason)
+		}
+		if err != nil {
+			// A template-rendering failure is a programming error (a
+			// malformed view model), not a transient provider issue —
+			// but this is still a detached goroutine after the HTTP
+			// response has already gone out, so there's nothing to do
+			// but log it and move on, same as any other failure here.
+			slog.Error("approval: failed to render decision email", "order_id", order.ID, "error", err)
+			return
+		}
 
-		if err := s.notifier.SendEmail(ctx, contact.Email, subject, body); err != nil {
+		if err := s.notifier.SendEmail(ctx, contact.Email, content.Subject, content.HTML, content.Text); err != nil {
 			slog.Error("approval: email notification failed",
 				"order_id", order.ID, "error", err)
 		}
 
 		if contact.Phone != nil && strings.TrimSpace(*contact.Phone) != "" {
-			if err := s.notifier.SendSMS(ctx, *contact.Phone, body); err != nil {
+			smsBody := notifier.RenderDecisionSMS(order, decision)
+			if err := s.notifier.SendSMS(ctx, *contact.Phone, smsBody); err != nil {
 				slog.Error("approval: sms notification failed",
 					"order_id", order.ID, "error", err)
 			}
