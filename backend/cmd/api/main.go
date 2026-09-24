@@ -49,6 +49,7 @@ func run() error {
 	orderRepo := repository.NewOrderRepository(pool)
 	approvalRepo := repository.NewApprovalRepository(pool)
 	userRepo := repository.NewUserRepository(pool)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(pool)
 
 	// LogNotifier writes to structured logs instead of a real provider —
 	// buildNotifier below swaps in SendGrid/Twilio automatically once
@@ -61,7 +62,9 @@ func run() error {
 	pricingSvc := service.NewPricingService()
 	orderSvc := service.NewOrderService(orderRepo, pricingSvc)
 	approvalSvc := service.NewApprovalService(approvalRepo, notifierSvc)
-	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTTokenTTL)
+	authSvc := service.NewAuthService(
+		userRepo, refreshTokenRepo, cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL,
+	)
 
 	productHandler := handler.NewProductHandler(productSvc)
 	orderHandler := handler.NewOrderHandler(orderSvc)
