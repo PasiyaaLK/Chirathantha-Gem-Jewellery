@@ -75,6 +75,7 @@ func NewRouter(
 		// --- Authenticated customer routes ---------------------------------
 		r.Route("/orders", func(r chi.Router) {
 			r.Use(authenticate)
+			r.Get("/", orderHandler.ListMine)
 			r.Post("/custom", orderHandler.SubmitCustom)
 			r.Get("/{id}", orderHandler.Get)
 		})

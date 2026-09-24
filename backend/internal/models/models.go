@@ -156,6 +156,13 @@ type OrderItem struct {
 	Quantity        int        `json:"quantity"`
 	UnitPrice       float64    `json:"unit_price"`
 	CreatedAt       time.Time  `json:"created_at"`
+
+	// Populated by OrderRepository so a client can render "Ring — Rose
+	// Gold, Sapphire" without a second round trip per item. Exactly one
+	// of these is ever non-nil, mirroring the DB's
+	// order_items_exactly_one_source constraint.
+	Customization *Customization `json:"customization,omitempty"`
+	Product       *Product       `json:"product,omitempty"`
 }
 
 type OrderApproval struct {
@@ -186,17 +193,18 @@ type CustomerContact struct {
 // It's a query-shaped DTO, not a table — joins orders + order_items +
 // customizations + users into one row per pending order.
 type PendingCustomOrder struct {
-	OrderID       uuid.UUID     `json:"order_id"`
-	UserID        uuid.UUID     `json:"user_id"`
-	Status        OrderStatus   `json:"status"`
-	TotalAmount   float64       `json:"total_amount"`
-	CreatedAt     time.Time     `json:"created_at"`
-	CustomerName  string        `json:"customer_name"`
-	CustomerEmail string        `json:"customer_email"`
-	CustomerPhone *string       `json:"customer_phone,omitempty"`
-	Quantity      int           `json:"quantity"`
-	UnitPrice     float64       `json:"unit_price"`
-	Customization Customization `json:"customization"`
+	OrderID         uuid.UUID     `json:"order_id"`
+	UserID          uuid.UUID     `json:"user_id"`
+	Status          OrderStatus   `json:"status"`
+	TotalAmount     float64       `json:"total_amount"`
+	ShippingAddress *string       `json:"shipping_address,omitempty"` // raw JSONB text
+	CreatedAt       time.Time     `json:"created_at"`
+	CustomerName    string        `json:"customer_name"`
+	CustomerEmail   string        `json:"customer_email"`
+	CustomerPhone   *string       `json:"customer_phone,omitempty"`
+	Quantity        int           `json:"quantity"`
+	UnitPrice       float64       `json:"unit_price"`
+	Customization   Customization `json:"customization"`
 }
 
 // --- Request DTOs ----------------------------------------------------------

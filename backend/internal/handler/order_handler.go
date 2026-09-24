@@ -55,6 +55,32 @@ func (h *OrderHandler) SubmitCustom(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusCreated, result)
 }
 
+// ListMine handles GET /api/v1/orders — the caller's own order history
+// (Section 5.1: "Order tracking page showing status"). There's no {id}
+// to check ownership against here, unlike Get — the query itself is
+// scoped to the authenticated caller's user ID (see
+// OrderRepository.ListByUser), so a customer can only ever get their
+// own orders back, not a filtered view of everyone's.
+func (h *OrderHandler) ListMine(w http.ResponseWriter, r *http.Request) {
+	userID, ok := appmiddleware.UserIDFromContext(r.Context())
+	if !ok {
+		httputil.WriteError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	orders, err := h.svc.ListMyOrders(r.Context(), userID)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+
+	if orders == nil {
+		orders = []models.Order{}
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, orders)
+}
+
 // Get handles GET /api/v1/orders/{id}. Now that Authenticate runs on
 // this route (see handler.NewRouter), it also enforces ownership: a
 // customer can fetch their own orders; an admin can fetch any order.

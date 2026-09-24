@@ -7,9 +7,21 @@ Router) + TypeScript project at these exact relative paths:
 lib/types.ts
 lib/api.ts
 lib/pricing.ts
+lib/styles.ts
+lib/format.ts
+lib/useAuth.ts
 components/Visualizer.tsx
 app/customize/page.tsx
+app/login/page.tsx
+app/signup/page.tsx
+app/orders/page.tsx
+app/admin/dashboard/page.tsx
 ```
+
+**One correction from the request:** the Go backend's real signup route
+is `POST /api/v1/auth/signup` (built in an earlier step), not
+`/api/v1/auth/register` — the login/signup pages below call the route
+that actually exists.
 
 ## Prerequisites / assumptions
 
@@ -73,6 +85,58 @@ app/customize/page.tsx
   `POST /api/v1/orders/custom` for submission. Handles the "not logged
   in," validation-error (400 from the pricing engine or field
   validation), and success states.
+- **`lib/styles.ts`** — shared Tailwind class strings and the
+  `STATUS_BADGE` map (one color/label per `OrderStatus`) so the new
+  pages below share one visual language instead of each hand-rolling
+  input/button styling. (`customize/page.tsx` predates this file and
+  still inlines its own copies — not refactored here since that wasn't
+  part of this step's ask, but pointing it at this file is a trivial
+  follow-up.)
+- **`lib/format.ts`** — `titleCase`, `formatDate`, `formatCurrency`, and
+  `formatShippingAddress` (unwraps the `{"raw": "..."}` JSON the
+  customize page sends back into a plain string for display).
+- **`lib/useAuth.ts`** — `useCurrentUser()`, a hook that calls
+  `GET /api/v1/auth/me` with whatever token is stored and exposes
+  `{ user, loading, error }`. Both new protected pages depend on
+  `loading` specifically: redirecting (or showing protected content) is
+  only safe once the check has actually settled — collapsing "still
+  checking" and "definitely not logged in" into one state is how a
+  protected page ends up flashing its content before redirecting.
+- **`app/login/page.tsx`** / **`app/signup/page.tsx`** — forms calling
+  the real backend routes, storing the returned token via
+  `lib/api.ts`'s `setToken`, and routing by role after login (admin →
+  `/admin/dashboard`, customer → `/orders`).
+- **`app/admin/dashboard/page.tsx`** — protected by `useCurrentUser`
+  (redirects to `/login` once it's *certain* the caller isn't an admin,
+  never before the check settles); lists
+  `GET /api/v1/admin/orders/pending`; clicking an order opens a drawer
+  with full customization + shipping detail and Approve/Decline actions
+  calling the real endpoints, refetching the list on success.
+- **`app/orders/page.tsx`** — the customer's own order history from the
+  new `GET /api/v1/orders` backend endpoint (added this step — see the
+  backend README's "What's built" section), with a status badge per
+  order from the shared `STATUS_BADGE` map.
+
+## Backend changes required to support these pages
+
+Building these pages surfaced two real gaps in the backend, both fixed
+(see the backend's own README for detail):
+
+1. **`GET /api/v1/orders` didn't exist.** There was only
+   `GET /api/v1/orders/{id}` (single order by ID) — nothing to back an
+   order *history* list. Added, scoped to the caller at the SQL level.
+2. **Order items only carried a bare `customization_id`/`product_id`
+   UUID**, not the actual customization/product detail — the order
+   history page couldn't have rendered anything meaningful ("Ring — Rose
+   Gold, Sapphire") without it. Every `OrderItem` the API returns now
+   carries the full nested object.
+3. **`shipping_address` was missing from the admin pending-orders
+   response** — present on `Order` but not on `PendingCustomOrder`,
+   which the admin drawer explicitly needs. Added.
+
+If you're pointing this frontend at an older copy of the backend that
+predates these three fixes, the order-tracking and admin-drawer pages
+won't have the data they expect.
 
 ## Verification performed
 
@@ -81,7 +145,8 @@ a scratch npm project was set up with the **real** `next`, `react`,
 and `three` packages (plus their real `@types/*` definitions) at
 realistic recent versions, a standard Next.js `tsconfig.json` (with the
 `@/*` path alias configured exactly as a real project would have it),
-and `tsc --noEmit --strict` run against all five files together.
+and `tsc --noEmit --strict` run against all twelve files together (the
+original five plus the new shared modules and pages from this step).
 
 **Result: zero errors**, in strict mode, against the real type
 definitions for React, Three.js, and Node — not a mocked or simplified

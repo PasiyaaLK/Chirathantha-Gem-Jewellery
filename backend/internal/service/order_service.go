@@ -78,6 +78,13 @@ func (s *OrderService) GetOrder(ctx context.Context, id uuid.UUID) (*models.Orde
 	return s.repo.GetByID(ctx, id)
 }
 
+// ListMyOrders backs GET /api/v1/orders — the order-tracking page
+// (Section 5.1: "Order tracking page showing status"). Scoped to userID
+// at the repository/SQL level, not filtered after the fact.
+func (s *OrderService) ListMyOrders(ctx context.Context, userID uuid.UUID) ([]models.Order, error) {
+	return s.repo.ListByUser(ctx, userID)
+}
+
 func validateCustomOrderRequest(req models.CustomOrderRequest) error {
 	if !req.Category.Valid() {
 		return ErrInvalidInput{Field: "category", Reason: "must be one of ring, bracelet, necklace"}

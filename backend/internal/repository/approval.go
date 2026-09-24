@@ -36,7 +36,7 @@ func NewApprovalRepository(pool *pgxpool.Pool) *ApprovalRepository {
 func (r *ApprovalRepository) ListPending(ctx context.Context) ([]models.PendingCustomOrder, error) {
 	const query = `
 		SELECT
-			o.id, o.user_id, o.status, o.total_amount, o.created_at,
+			o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.created_at,
 			u.full_name, u.email, u.phone,
 			oi.quantity, oi.unit_price,
 			c.id, c.user_id, c.category, c.gender, c.metal_type, c.gemstone_type,
@@ -59,7 +59,7 @@ func (r *ApprovalRepository) ListPending(ctx context.Context) ([]models.PendingC
 	for rows.Next() {
 		var p models.PendingCustomOrder
 		if err := rows.Scan(
-			&p.OrderID, &p.UserID, &p.Status, &p.TotalAmount, &p.CreatedAt,
+			&p.OrderID, &p.UserID, &p.Status, &p.TotalAmount, &p.ShippingAddress, &p.CreatedAt,
 			&p.CustomerName, &p.CustomerEmail, &p.CustomerPhone,
 			&p.Quantity, &p.UnitPrice,
 			&p.Customization.ID, &p.Customization.UserID, &p.Customization.Category,
@@ -151,6 +151,19 @@ func (r *ApprovalRepository) DecideCustomOrder(
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("repository: commit decision tx: %w", err)
 	}
+
+	// order_items for this order are immutable by this point (fixed at
+	// creation time; this transaction only ever touches orders.status
+	// and order_approvals), so fetching them via the pool after commit
+	// — rather than inside the transaction above — is safe and simpler.
+	// Without this, the notification email/SMS built from this Order
+	// would have an empty item list: the UPDATE...RETURNING above only
+	// ever populated the order's own columns, never its line items.
+	itemsByOrder, err := fetchItemsWithDetails(ctx, r.pool, []uuid.UUID{order.ID})
+	if err != nil {
+		return nil, err
+	}
+	order.Items = itemsByOrder[order.ID]
 
 	return &ApprovalResult{Order: order, Customer: contact}, nil
 }
