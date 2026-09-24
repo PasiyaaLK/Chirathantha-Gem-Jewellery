@@ -232,9 +232,26 @@ type LoginRequest struct {
 
 // AuthResponse is returned by both signup and login: a bearer token plus
 // the profile of the account it belongs to.
+// AuthResponse is returned by signup, login, and refresh. The access
+// and refresh tokens themselves are NEVER included here — they travel
+// exclusively as HttpOnly cookies (set by internal/handler/auth_handler.go),
+// specifically so that JavaScript (including an attacker's, via XSS)
+// cannot read them. Putting the token in this JSON body as well would
+// defeat that protection entirely — anything JS can read from a fetch()
+// response, XSS-injected JS can read too.
 type AuthResponse struct {
-	Token string `json:"token"`
-	User  User   `json:"user"`
+	User User `json:"user"`
+}
+
+// RefreshToken is a stored (hashed) refresh token — see migrations/0002_refresh_tokens.sql.
+// The raw token itself only ever exists transiently: generated at
+// issuance, handed to the client as a cookie, and never persisted or
+// logged anywhere. Only its SHA-256 hash is stored.
+type RefreshToken struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	ExpiresAt time.Time
+	RevokedAt *time.Time
 }
 
 // --- Pricing ---------------------------------------------------------------
