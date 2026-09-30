@@ -19,12 +19,19 @@ type Config struct {
 	DBConnectTimeout  time.Duration
 	DBMaxConnLifetime time.Duration
 
-	// JWTSecret signs and verifies auth tokens (see internal/middleware).
+	// JWTSecret signs and verifies access tokens (see internal/middleware).
 	// Required, like DatabaseURL — an insecure baked-in default here would
 	// mean every deployment that forgets to set it shares the same key.
 	JWTSecret []byte
-	// JWTTokenTTL controls how long a signup/login-issued token is valid.
-	JWTTokenTTL time.Duration
+	// AccessTokenTTL controls how long a signup/login/refresh-issued
+	// access token is valid — short by design (default 15m), since it
+	// travels in a cookie sent on every request and a compromised one is
+	// only useful for this long. RefreshTokenTTL controls the much
+	// longer-lived, revocable, DB-backed refresh token used to silently
+	// mint new access tokens without forcing a re-login — see
+	// AuthService.RefreshAccessToken and migrations/0002_refresh_tokens.sql.
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
 
 	// AllowedOrigins configures CORS for the Next.js frontend.
 	AllowedOrigins []string
@@ -68,7 +75,8 @@ func Load() (*Config, error) {
 		DBConnectTimeout:  getEnvDuration("DB_CONNECT_TIMEOUT", 5*time.Second),
 		DBMaxConnLifetime: getEnvDuration("DB_MAX_CONN_LIFETIME", time.Hour),
 		JWTSecret:         []byte(jwtSecret),
-		JWTTokenTTL:       getEnvDuration("JWT_TOKEN_TTL", 24*time.Hour),
+		AccessTokenTTL:    getEnvDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTokenTTL:   getEnvDuration("REFRESH_TOKEN_TTL", 7*24*time.Hour),
 		AllowedOrigins:    []string{getEnv("FRONTEND_ORIGIN", "http://localhost:3000")},
 
 		SendGridAPIKey:   os.Getenv("SENDGRID_API_KEY"),

@@ -1,6 +1,8 @@
-// Package middleware holds HTTP middleware shared across route groups.
-// Today that's authentication and role-based access control; request
-// logging/recovery/CORS are chi's own middleware, wired in handler.Router.
+// Package middleware holds HTTP middleware shared across route groups:
+// authentication/RBAC (this file), rate limiting and body-size limits
+// (security.go), response security headers (headers.go), and panic
+// recovery (recovery.go). Request ID/RealIP/logging/CORS are chi's own
+// middleware, wired in handler.Router.
 package middleware
 
 import (
@@ -16,6 +18,16 @@ import (
 
 	"gemstore/internal/httputil"
 	"gemstore/internal/models"
+)
+
+// Cookie names shared between this package (which reads
+// AccessTokenCookieName in Authenticate) and internal/handler/auth_handler.go
+// (which sets/clears both). Exported and centralized here rather than
+// duplicated as string literals in two files, which is exactly how a
+// typo causes "logout doesn't actually log anyone out" bugs.
+const (
+	AccessTokenCookieName  = "access_token"
+	RefreshTokenCookieName = "refresh_token"
 )
 
 type contextKey int
@@ -34,11 +46,9 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// GenerateToken issues a signed JWT for userID/role. There is no
-// login/signup endpoint yet — that needs password hashing and a users
-// repository, which is a clean Step 3 — so this is today's way to
-// produce a token to test the routes below. See cmd/gentoken for a
-// runnable CLI wrapper around this.
+// GenerateToken issues a signed access-token JWT for userID/role. Used
+// by AuthService on login/signup/refresh, and by cmd/gentoken as a dev
+// shortcut for minting a token without going through a real login.
 func GenerateToken(secret []byte, userID uuid.UUID, role models.UserRole, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
@@ -58,16 +68,24 @@ func GenerateToken(secret []byte, userID uuid.UUID, role models.UserRole, ttl ti
 	return signed, nil
 }
 
-// Authenticate validates the "Authorization: Bearer <token>" header
-// against secret. On success it stores the caller's user ID and role in
-// the request context (read back with UserIDFromContext / RoleFromContext)
-// and calls next; on failure it writes a 401 and stops the chain.
+// Authenticate validates the caller's access token against secret and,
+// on success, stores their user ID and role in the request context
+// (read back with UserIDFromContext / RoleFromContext).
+//
+// The token is read from the access_token HttpOnly cookie first (the
+// web frontend's path, set by auth_handler.go on login/signup/refresh),
+// falling back to an "Authorization: Bearer <token>" header if no
+// cookie is present — kept for non-browser API clients (scripts, a
+// future mobile app) and for cmd/gentoken-minted test tokens, which
+// have no way to arrive as a cookie. Both paths converge on the same
+// validation and the same context values; nothing downstream needs to
+// know or care which one was used.
 func Authenticate(secret []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			tokenString, ok := bearerToken(r)
+			tokenString, ok := accessToken(r)
 			if !ok {
-				httputil.WriteError(w, http.StatusUnauthorized, "missing or malformed Authorization header")
+				httputil.WriteError(w, http.StatusUnauthorized, "not authenticated")
 				return
 			}
 
@@ -84,7 +102,7 @@ func Authenticate(secret []byte) func(http.Handler) http.Handler {
 
 			switch {
 			case errors.Is(err, jwt.ErrTokenExpired):
-				httputil.WriteError(w, http.StatusUnauthorized, "token expired")
+				httputil.WriteError(w, http.StatusUnauthorized, "session expired")
 				return
 			case err != nil || !token.Valid:
 				httputil.WriteError(w, http.StatusUnauthorized, "invalid token")
@@ -140,7 +158,14 @@ func RoleFromContext(ctx context.Context) (models.UserRole, bool) {
 	return role, ok
 }
 
-func bearerToken(r *http.Request) (string, bool) {
+// accessToken finds the access token from the cookie or, failing that,
+// the Authorization header. See Authenticate's doc comment for why both
+// exist.
+func accessToken(r *http.Request) (string, bool) {
+	if cookie, err := r.Cookie(AccessTokenCookieName); err == nil && cookie.Value != "" {
+		return cookie.Value, true
+	}
+
 	raw := r.Header.Get("Authorization")
 	token, ok := strings.CutPrefix(raw, "Bearer ")
 	if !ok || strings.TrimSpace(token) == "" {
